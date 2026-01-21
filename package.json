@@ -1,0 +1,43 @@
+{
+  "name": "mysql-orm-lite",
+  "version": "1.0.0",
+  "description": "A lightweight ORM for MySQL with connection pooling, query builder, and transaction support",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "mysql",
+    "mysql2",
+    "orm",
+    "lightweight",
+    "crud",
+    "connection-pool",
+    "transaction",
+    "query-builder",
+    "database",
+    "sql"
+  ],
+  "author": "Manikandan Thonthiraj <manikandan.thonthiraj@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Manikandan-Thonthiraj/mysql-orm-lite.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Manikandan-Thonthiraj/mysql-orm-lite/issues"
+  },
+  "homepage": "https://github.com/Manikandan-Thonthiraj/mysql-orm-lite#readme",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "peerDependencies": {
+    "mysql2": "^3.0.0"
+  },
+  "dependencies": {
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "mysql2": "^3.11.5"
+  }
+}
