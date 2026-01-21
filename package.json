@@ -34,9 +34,6 @@
   "peerDependencies": {
     "mysql2": "^3.0.0"
   },
-  "dependencies": {
-    "lodash": "^4.17.21"
-  },
   "devDependencies": {
     "mysql2": "^3.11.5"
   }
