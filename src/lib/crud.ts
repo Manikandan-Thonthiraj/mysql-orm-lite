@@ -1,9 +1,9 @@
-'use strict';
-const connectionManager = require('./connectionManager');
+import connectionManager from './connectionManager';
+import { DbConfig, SelectOptions, UpdateOptions, DeleteOptions, WhereConditions } from '../types';
 
-const utils = {
-    handleConnectionError(err) {
-        const errorMessages = {
+export const utils = {
+    handleConnectionError(err: any): Error {
+        const errorMessages: Record<string, string> = {
             PROTOCOL_CONNECTION_LOST: 'Database connection was closed.',
             ER_CON_COUNT_ERROR: 'Database has too many connections.',
             ECONNREFUSED: 'Database connection was refused.',
@@ -12,7 +12,7 @@ const utils = {
         return new Error(errorMessages[err.code] || err.message);
     },
 
-    logQueryPerformance(query, startTime, params = []) {
+    logQueryPerformance(query: string, startTime: number, params: any[] = []): number {
         const logger = connectionManager.getLogger();
         const duration = Date.now() - startTime;
         if (duration > 1000) {
@@ -25,7 +25,7 @@ const utils = {
         return duration;
     },
 
-    async executeQuery({ query, params = [], dbConfig, operation = 'query' }) {
+    async executeQuery({ query, params = [], dbConfig, operation = 'query' }: { query: string; params?: any[]; dbConfig?: DbConfig; operation?: string }): Promise<any> {
         const startTime = Date.now();
         const logger = connectionManager.getLogger();
 
@@ -34,7 +34,7 @@ const utils = {
             const [results] = await pool.query(query, params);
             this.logQueryPerformance(query, startTime, params);
             return results;
-        } catch (error) {
+        } catch (error: any) {
             logger.error(`${operation} Error: ${error.message}`);
             logger.error(`Query: ${query}`);
             if (params.length) logger.error('Parameters:', JSON.stringify(params));
@@ -42,8 +42,8 @@ const utils = {
         }
     },
 
-    validateUpdateParams(table, data, query) {
-        const errors = [];
+    validateUpdateParams(table: string, data: Record<string, any>, query: string): string[] {
+        const errors: string[] = [];
         if (!table || typeof table !== 'string') errors.push('Invalid table name');
         else if (!/^[a-zA-Z0-9_]+$/.test(table)) errors.push('Table name contains invalid characters');
 
@@ -56,9 +56,9 @@ const utils = {
         return errors;
     },
 
-    prepareUpdateParams(data) {
-        const setFields = [];
-        const params = [];
+    prepareUpdateParams(data: Record<string, any>): { setFields: string[]; params: any[] } {
+        const setFields: string[] = [];
+        const params: any[] = [];
 
         for (const [key, value] of Object.entries(data)) {
             if (value === undefined) continue;
@@ -79,13 +79,13 @@ const utils = {
         return { setFields, params };
     },
 
-    _buildWhereClause(conditions) {
-        const params = [];
-        const buildCondition = (key, value) => {
+    _buildWhereClause(conditions: WhereConditions): { clause: string; params: any[] } {
+        const params: any[] = [];
+        const buildCondition = (key: string, value: any): string => {
             const column = key;
             if (value === null) return `${column} IS NULL`;
             if (typeof value === 'object' && !Array.isArray(value)) {
-                return Object.entries(value).map(([op, val]) => {
+                return Object.entries(value).map(([op, val]: [string, any]) => {
                     switch (op) {
                         case '$eq': params.push(val); return `${column} = ?`;
                         case '$ne': params.push(val); return `${column} != ?`;
@@ -117,7 +117,7 @@ const utils = {
             return `${column} = ?`;
         };
 
-        const walk = (cond) => {
+        const walk = (cond: any): string => {
             if (!cond || typeof cond !== 'object') return '';
             if (Array.isArray(cond)) return cond.map(walk).join(' AND ');
 
@@ -132,7 +132,7 @@ const utils = {
         return { clause, params };
     },
 
-    _buildSelectQuery(options) {
+    _buildSelectQuery(options: SelectOptions): { query: string; params: any[] } {
         let { table, fields = '*', joins = [], where, orderBy, limit, offset, groupBy, having, alias, forUpdate = false } = options;
 
         if (fields && Array.isArray(fields) && fields.length > 0) {
@@ -142,7 +142,7 @@ const utils = {
         }
 
         let query = `SELECT ${fields} FROM ${table}${alias ? ' ' + alias : ''}`;
-        const allParams = [];
+        const allParams: any[] = [];
 
         for (const join of joins) {
             let { type = 'INNER', table: joinTable, alias, on } = join;
@@ -174,7 +174,7 @@ const utils = {
         return { query, params: allParams };
     },
 
-    _buildUpdateQuery(options) {
+    _buildUpdateQuery(options: UpdateOptions): { query: string; params: any[] } {
         const { table, data, where } = options;
         const { setFields, params } = this.prepareUpdateParams(data);
 
@@ -194,12 +194,12 @@ const utils = {
         return { query, params: allParams };
     },
 
-    _buildDeleteQuery(options) {
+    _buildDeleteQuery(options: DeleteOptions): { query: string; params: any[] } {
         const { table, where } = options;
         if (!table) throw new Error('Table name is required for delete');
 
         let query = `DELETE FROM ${table}`;
-        const allParams = [];
+        const allParams: any[] = [];
 
         if (where) {
             const { clause, params: whereParams } = this._buildWhereClause(where);
@@ -218,18 +218,18 @@ const utils = {
 };
 
 // Public API
-exports.find = async function (query, params = [], dbConfig) {
+export const find = async function (query: string, params: any[] = [], dbConfig?: DbConfig): Promise<any[]> {
     if (!query) return [];
     return await utils.executeQuery({ query, params, dbConfig, operation: 'find' });
 };
 
-exports.findCount = async function (query, params = [], dbConfig) {
+export const findCount = async function (query: string, params: any[] = [], dbConfig?: DbConfig): Promise<number> {
     if (!query) return 0;
     const results = await utils.executeQuery({ query, params, dbConfig, operation: 'findCount' });
     return results && results[0] ? results[0].count : 0;
 };
 
-exports.insert = async function (table, data, dbConfig, debug = false, isIgnore = false) {
+export const insert = async function (table: string, data: Record<string, any>, dbConfig?: DbConfig, debug = false, isIgnore = false): Promise<any> {
     if (!table || !data || typeof data !== 'object') throw new Error('Invalid table or data');
 
     const logger = connectionManager.getLogger();
@@ -248,7 +248,7 @@ exports.insert = async function (table, data, dbConfig, debug = false, isIgnore 
     return result.insertId;
 };
 
-exports.update = async function (table, data, query, dbConfig, debug = false) {
+export const update = async function (table: string, data: Record<string, any>, query: string, dbConfig?: DbConfig, debug = false): Promise<number> {
     const errors = utils.validateUpdateParams(table, data, query);
     if (errors.length > 0) throw new Error(`Validation failed: ${errors.join(', ')}`);
 
@@ -265,7 +265,7 @@ exports.update = async function (table, data, query, dbConfig, debug = false) {
     return result.affectedRows;
 };
 
-exports.delete = async function (query, table, dbConfig) {
+export const _delete = async function (query: string, table?: string, dbConfig?: DbConfig): Promise<number> {
     if (!query || !query.toLowerCase().includes('where')) throw new Error('Invalid query or missing WHERE clause');
 
     const logger = connectionManager.getLogger();
@@ -275,31 +275,33 @@ exports.delete = async function (query, table, dbConfig) {
     return result.affectedRows;
 };
 
-// Query Builder Methods - Multiple naming options for flexibility
-exports.buildAndExecuteSelectQuery = async function (options, dbConfig) {
+export { _delete as delete };
+
+// Query Builder Methods
+export const buildAndExecuteSelectQuery = async function (options: SelectOptions, dbConfig?: DbConfig): Promise<any[]> {
     const { query, params } = utils._buildSelectQuery(options);
     return await utils.executeQuery({ query, params, dbConfig, operation: 'buildAndExecuteSelectQuery' });
 };
 
-exports.buildAndExecuteUpdateQuery = async function (options, dbConfig) {
+export const buildAndExecuteUpdateQuery = async function (options: UpdateOptions, dbConfig?: DbConfig): Promise<number> {
     const { query, params } = utils._buildUpdateQuery(options);
-    return await utils.executeQuery({ query, params, dbConfig, operation: 'buildAndExecuteUpdateQuery' });
+    const result = await utils.executeQuery({ query, params, dbConfig, operation: 'buildAndExecuteUpdateQuery' });
+    return result.affectedRows;
 };
 
-exports.buildAndExecuteDeleteQuery = async function (options, dbConfig) {
+export const buildAndExecuteDeleteQuery = async function (options: DeleteOptions, dbConfig?: DbConfig): Promise<number> {
     const { query, params } = utils._buildDeleteQuery(options);
-    return await utils.executeQuery({ query, params, dbConfig, operation: 'buildAndExecuteDeleteQuery' });
+    const result = await utils.executeQuery({ query, params, dbConfig, operation: 'buildAndExecuteDeleteQuery' });
+    return result.affectedRows;
 };
 
-// Alternative shorter method names (aliases)
-exports.select = exports.buildAndExecuteSelectQuery;
-exports.findWhere = exports.buildAndExecuteSelectQuery;
-exports.query = exports.buildAndExecuteSelectQuery;
+// Aliases
+export const select = buildAndExecuteSelectQuery;
+export const findWhere = buildAndExecuteSelectQuery;
+export const query = buildAndExecuteSelectQuery;
 
-exports.updateWhere = exports.buildAndExecuteUpdateQuery;
-exports.updateQuery = exports.buildAndExecuteUpdateQuery;
+export const updateWhere = buildAndExecuteUpdateQuery;
+export const updateQuery = buildAndExecuteUpdateQuery;
 
-exports.deleteWhere = exports.buildAndExecuteDeleteQuery;
-exports.remove = exports.buildAndExecuteDeleteQuery;
-
-exports.utils = utils;
+export const deleteWhere = buildAndExecuteDeleteQuery;
+export const remove = buildAndExecuteDeleteQuery;

@@ -1,8 +1,12 @@
-'use strict';
-const connectionManager = require('./connectionManager');
-const crudUtils = require('./crud').utils;
+import connectionManager from './connectionManager';
+import { utils as crudUtils } from './crud';
+import { DbConfig, SelectOptions, UpdateOptions, DeleteOptions } from '../types';
 
 class TransactionCRUD {
+    private connection: any = null;
+    private transactionActive: boolean = false;
+    public debug: boolean = false;
+
     constructor() {
         this.connection = null;
         this.transactionActive = false;
@@ -11,9 +15,9 @@ class TransactionCRUD {
 
     /**
      * Initialize a transaction
-     * @param {Object} dbConfig - Database configuration (optional)
+     * @param dbConfig - Database configuration (optional)
      */
-    async init(dbConfig) {
+    async init(dbConfig?: DbConfig): Promise<any> {
         const logger = connectionManager.getLogger();
         try {
             const pool = await connectionManager.getPool(dbConfig);
@@ -37,7 +41,7 @@ class TransactionCRUD {
     /**
      * Execute a query within the transaction
      */
-    async executeQuery(query, params = [], operation = 'TRANS_QUERY') {
+    async executeQuery(query: string, params: any[] = [], operation = 'TRANS_QUERY'): Promise<any> {
         if (!this.connection || !this.transactionActive) {
             throw new Error('No active transaction. Call init() first.');
         }
@@ -53,7 +57,7 @@ class TransactionCRUD {
             }
 
             return results;
-        } catch (error) {
+        } catch (error: any) {
             logger.error(`${operation} Failed: ${error.message}`);
             logger.error(`Query: ${query}`);
             throw error;
@@ -63,7 +67,7 @@ class TransactionCRUD {
     /**
      * Commit the transaction
      */
-    async commit() {
+    async commit(): Promise<void> {
         if (!this.connection || !this.transactionActive) {
             throw new Error('No active transaction to commit');
         }
@@ -84,7 +88,7 @@ class TransactionCRUD {
     /**
      * Rollback the transaction
      */
-    async rollback() {
+    async rollback(): Promise<void> {
         if (!this.connection) return;
 
         const logger = connectionManager.getLogger();
@@ -98,7 +102,7 @@ class TransactionCRUD {
         }
     }
 
-    _cleanup() {
+    private _cleanup(): void {
         if (this.connection) {
             this.connection.release();
             this.connection = null;
@@ -108,11 +112,11 @@ class TransactionCRUD {
 
     // CRUD Methods
 
-    async find(query, params = []) {
+    async find(query: string, params: any[] = []): Promise<any[]> {
         return await this.executeQuery(query, params, 'TRANS_FIND');
     }
 
-    async insert(table, data) {
+    async insert(table: string, data: Record<string, any>): Promise<any> {
         if (!table || !data) throw new Error('Invalid table or data');
         const fields = Object.keys(data);
         const values = Object.values(data);
@@ -123,7 +127,7 @@ class TransactionCRUD {
         return result.insertId;
     }
 
-    async update(table, data, query) {
+    async update(table: string, data: Record<string, any>, query: string): Promise<number> {
         if (!query || !query.toLowerCase().includes('where')) throw new Error('Update requires WHERE');
 
         const { setFields, params } = crudUtils.prepareUpdateParams(data);
@@ -133,14 +137,14 @@ class TransactionCRUD {
         return result.affectedRows;
     }
 
-    async delete(query, table) {
+    async delete(query: string, table?: string): Promise<number> {
         if (!query || !query.toLowerCase().includes('where')) throw new Error('Delete requires WHERE');
         const sql = table ? `DELETE FROM ${table} ${query}` : query;
         const result = await this.executeQuery(sql, [], 'TRANS_DELETE');
         return result.affectedRows;
     }
 
-    async buildAndExecuteSelectQuery(options = {}) {
+    async buildAndExecuteSelectQuery(options: SelectOptions): Promise<any[]> {
         const logger = connectionManager.getLogger();
         try {
             const { query, params } = crudUtils._buildSelectQuery(options);
@@ -151,7 +155,7 @@ class TransactionCRUD {
         }
     }
 
-    async buildAndExecuteUpdateQuery(options = {}) {
+    async buildAndExecuteUpdateQuery(options: UpdateOptions): Promise<number> {
         const logger = connectionManager.getLogger();
         try {
             const { query, params } = crudUtils._buildUpdateQuery(options);
@@ -163,7 +167,7 @@ class TransactionCRUD {
         }
     }
 
-    async buildAndExecuteDeleteQuery(options = {}) {
+    async buildAndExecuteDeleteQuery(options: DeleteOptions): Promise<number> {
         const logger = connectionManager.getLogger();
         try {
             const { query, params } = crudUtils._buildDeleteQuery(options);
@@ -176,38 +180,39 @@ class TransactionCRUD {
     }
 
     // Alternative shorter method names (aliases)
-    async select(options) {
+    async select(options: SelectOptions): Promise<any[]> {
         return this.buildAndExecuteSelectQuery(options);
     }
 
-    async findWhere(options) {
+    async findWhere(options: SelectOptions): Promise<any[]> {
         return this.buildAndExecuteSelectQuery(options);
     }
 
-    async findForUpdate(options) {
+    async findForUpdate(options: SelectOptions): Promise<any[]> {
         options.forUpdate = true;
         return this.buildAndExecuteSelectQuery(options);
     }
 
-    async query(options) {
+    async query(options: SelectOptions): Promise<any[]> {
         return this.buildAndExecuteSelectQuery(options);
     }
 
-    async updateWhere(options) {
+    async updateWhere(options: UpdateOptions): Promise<number> {
         return this.buildAndExecuteUpdateQuery(options);
     }
 
-    async updateQuery(options) {
+    async updateQuery(options: UpdateOptions): Promise<number> {
         return this.buildAndExecuteUpdateQuery(options);
     }
 
-    async deleteWhere(options) {
+    async deleteWhere(options: DeleteOptions): Promise<number> {
         return this.buildAndExecuteDeleteQuery(options);
     }
 
-    async remove(options) {
+    async remove(options: DeleteOptions): Promise<number> {
         return this.buildAndExecuteDeleteQuery(options);
     }
 }
 
-module.exports = TransactionCRUD;
+export default TransactionCRUD;
+export { TransactionCRUD };
