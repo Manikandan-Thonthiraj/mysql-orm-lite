@@ -2,11 +2,15 @@ import connectionManager from './lib/connectionManager';
 import * as crud from './lib/crud';
 import TransactionCRUD from './lib/TransactionCRUD';
 import transactionManager from './lib/transactionManager';
+import schema from './lib/schema';
+import performanceMonitor from './lib/performanceMonitor';
 
 export {
     connectionManager,
     transactionManager,
-    TransactionCRUD
+    TransactionCRUD,
+    schema,
+    performanceMonitor
 };
 
 // CRUD Operations (Non-transactional)
@@ -16,6 +20,11 @@ export const insert = crud.insert;
 export const update = crud.update;
 export const _delete = crud.delete;
 export { _delete as delete };
+
+// Bulk Operations
+export const bulkInsert = crud.bulkInsert;
+export const upsert = crud.upsert;
+export const bulkUpsert = crud.bulkUpsert;
 
 // Query Builder - Full names
 export const buildAndExecuteSelectQuery = crud.buildAndExecuteSelectQuery;
@@ -42,6 +51,8 @@ export default {
     connectionManager,
     transactionManager,
     TransactionCRUD,
+    schema,
+    performanceMonitor,
     find,
     findCount,
     insert,
@@ -58,5 +69,8 @@ export default {
     deleteWhere,
     remove,
     utils,
-    createTransaction
+    createTransaction,
+    bulkInsert,
+    upsert,
+    bulkUpsert
 };

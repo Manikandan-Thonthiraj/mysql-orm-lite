@@ -872,6 +872,400 @@ if (db.transactionManager.hasActiveTransaction()) {
 
 ---
 
+### Schema Introspection
+
+Query your database structure programmatically to inspect tables, columns, and indexes.
+
+#### `schema.tables(dbConfig?)`
+
+Get a list of all tables in the database.
+
+```javascript
+const tables = await db.schema.tables();
+console.log(tables); // ['users', 'orders', 'products', ...]
+```
+
+#### `schema.columns(tableName, dbConfig?)`
+
+Get detailed column information for a specific table.
+
+```javascript
+const columns = await db.schema.columns('users');
+console.log(columns);
+/*
+[
+  {
+    name: 'id',
+    type: 'int(11)',
+    nullable: false,
+    key: 'PRI',
+    default: null,
+    extra: 'auto_increment'
+  },
+  {
+    name: 'email',
+    type: 'varchar(255)',
+    nullable: false,
+    key: 'UNI',
+    default: null,
+    extra: ''
+  },
+  ...
+]
+*/
+```
+
+#### `schema.indexes(tableName, dbConfig?)`
+
+Get index information for a specific table.
+
+```javascript
+const indexes = await db.schema.indexes('users');
+console.log(indexes);
+/*
+[
+  {
+    name: 'PRIMARY',
+    column: 'id',
+    unique: true,
+    type: 'BTREE'
+  },
+  {
+    name: 'email_idx',
+    column: 'email',
+    unique: true,
+    type: 'BTREE'
+  },
+  ...
+]
+*/
+```
+
+#### Practical Use Cases
+
+**Dynamic Form Generation:**
+```javascript
+const columns = await db.schema.columns('products');
+const formFields = columns
+  .filter(col => !['id', 'created_at', 'updated_at'].includes(col.name))
+  .map(col => ({
+    name: col.name,
+    type: col.type.includes('int') ? 'number' : 'text',
+    required: !col.nullable
+  }));
+```
+
+**Schema Validation:**
+```javascript
+const tables = await db.schema.tables();
+const requiredTables = ['users', 'orders', 'products'];
+const missingTables = requiredTables.filter(t => !tables.includes(t));
+
+if (missingTables.length > 0) {
+  console.error('Missing tables:', missingTables);
+}
+```
+
+#### `schema.foreignKeys(tableName?, dbConfig?)`
+
+Get foreign key relationships for a specific table or all tables.
+
+```javascript
+// Get all foreign keys in the database
+const allForeignKeys = await db.schema.foreignKeys();
+console.log(allForeignKeys);
+/*
+[
+  {
+    childTable: 'orders',
+    parentTable: 'users',
+    constraintName: 'orders_ibfk_1',
+    columnName: 'user_id',
+    referencedColumnName: 'id'
+  },
+  {
+    childTable: 'order_items',
+    parentTable: 'orders',
+    constraintName: 'order_items_ibfk_1',
+    columnName: 'order_id',
+    referencedColumnName: 'id'
+  },
+  ...
+]
+*/
+
+// Get foreign keys for a specific table
+const orderForeignKeys = await db.schema.foreignKeys('orders');
+console.log(orderForeignKeys); // Shows both incoming and outgoing foreign keys
+```
+
+#### `schema.deleteOrder(dbConfig?)`
+
+Get the correct order to delete/truncate tables based on foreign key dependencies. Uses topological sort to ensure child tables are deleted before parent tables, preventing foreign key constraint violations.
+
+```javascript
+const deleteOrder = await db.schema.deleteOrder();
+console.log(deleteOrder);
+// ['order_items', 'orders', 'users', 'products', ...]
+// Child tables come first, so you can safely delete in this order
+
+// Practical use: Truncate all tables in the correct order
+for (const table of deleteOrder) {
+  await db.find(`TRUNCATE TABLE ${table}`);
+  console.log(`Truncated ${table}`);
+}
+```
+
+**Use Cases:**
+- **Database Cleanup**: Safely truncate all tables for testing without foreign key errors
+- **Data Migration**: Understand table dependencies before moving data
+- **Schema Visualization**: Generate dependency graphs for documentation```
+
+---
+
+```
+
+---
+
+### Bulk Operations
+
+Optimized methods for handling large datasets efficiently.
+
+#### `bulkInsert(table, records, options?)`
+
+Insert multiple records in a single query (batching handled automatically).
+
+```javascript
+const users = [
+  { name: 'User 1', email: 'user1@test.com' },
+  { name: 'User 2', email: 'user2@test.com' },
+  // ... 1000s of other users
+];
+
+// Automatically splits into batches (default 1000 per batch)
+const result = await db.bulkInsert('users', users);
+
+console.log(`Inserted ${result.totalInserted} users in ${result.batches} batches`);
+console.log(`First ID: ${result.firstInsertId}, Last ID: ${result.lastInsertId}`);
+
+// Custom batch size
+await db.bulkInsert('users', users, { batchSize: 500 });
+
+// Use INSERT IGNORE to skip duplicates
+await db.bulkInsert('users', users, { ignore: true });
+```
+
+#### `upsert(table, data, options)`
+
+Insert a record, or update specific fields if a duplicate key constraint occurs.
+
+```javascript
+// Updates 'stock' if product with id 101 already exists
+const result = await db.upsert('products', {
+  id: 101,
+  name: 'Laptop',
+  stock: 50
+}, {
+  conflictKey: 'id', // Column(s) that define uniqueness
+  updateFields: ['stock'] // Only update 'stock' on conflict, keep 'name' as is
+  // If updateFields is omitted, ALL fields except conflictKey are updated
+});
+
+if (result.action === 'inserted') {
+  console.log('New product created');
+} else {
+  console.log('Product stock updated');
+}
+```
+
+#### `bulkUpsert(table, records, options)`
+
+Perform upsert operations on a large array of records efficiently.
+
+```javascript
+const products = [
+  { id: 101, stock: 50 },
+  { id: 102, stock: 20 },
+  // ...
+];
+
+const result = await db.bulkUpsert('products', products, {
+  conflictKey: 'id',
+  updateFields: ['stock']
+});
+
+console.log(`Updated stock for ${result.totalAffected} products`);
+```
+
+---
+
+### Performance Monitoring
+
+
+Track query execution metrics, identify slow queries, and monitor database performance in real-time.
+
+#### Enable/Disable Monitoring
+
+```javascript
+// Enable performance monitoring
+db.performanceMonitor.enable();
+
+// Your database operations...
+await db.select({ table: 'users', where: { active: true } });
+
+// Disable monitoring
+db.performanceMonitor.disable();
+```
+
+> [!NOTE]
+> Performance monitoring is **disabled by default** to avoid overhead. Enable it only when needed.
+
+#### Get Performance Statistics
+
+```javascript
+db.performanceMonitor.enable();
+
+// Execute some queries...
+await db.select({ table: 'users' });
+await db.insert('logs', { message: 'test' });
+await db.updateWhere({ table: 'users', data: { status: 'active' }, where: { id: 1 } });
+
+// Get comprehensive stats
+const stats = db.performanceMonitor.getStats();
+console.log(stats);
+/*
+{
+  enabled: true,
+  totalQueries: 3,
+  averageQueryTime: 12.5,
+  slowestQueries: [
+    {
+      query: 'SELECT * FROM users',
+      duration: 25,
+      timestamp: 1234567890,
+      type: 'SELECT',
+      params: []
+    },
+    ...
+  ],
+  queryCountByType: {
+    SELECT: 1,
+    INSERT: 1,
+    UPDATE: 1,
+    DELETE: 0,
+    OTHER: 0
+  },
+  startTime: 1234567800,
+  uptime: 90000
+}
+*/
+```
+
+#### Get Slow Queries
+
+```javascript
+// Get top 10 slowest queries
+const slowQueries = db.performanceMonitor.getSlowQueries(10);
+console.log(slowQueries);
+
+// Each entry contains:
+// - query: SQL query string
+// - duration: Execution time in milliseconds
+// - timestamp: When the query was executed
+// - type: Query type (SELECT, INSERT, UPDATE, DELETE, OTHER)
+// - params: Query parameters (if any)
+```
+
+#### Get Recent Queries
+
+```javascript
+// Get queries from the last 60 seconds (default)
+const recentQueries = db.performanceMonitor.getRecentQueries();
+
+// Get queries from the last 5 minutes
+const last5Min = db.performanceMonitor.getRecentQueries(5 * 60 * 1000);
+```
+
+#### Get Queries Per Second
+
+```javascript
+const qps = db.performanceMonitor.getQueriesPerSecond();
+console.log(`Current QPS: ${qps.toFixed(2)}`);
+```
+
+#### Reset Metrics
+
+```javascript
+// Clear all collected metrics and restart the timer
+db.performanceMonitor.reset();
+```
+
+#### Connection Pool Statistics
+
+```javascript
+// Get current connection pool stats
+const poolStats = await db.connectionManager.getPoolStats();
+console.log(poolStats);
+/*
+{
+  activeConnections: 2,
+  idleConnections: 8,
+  totalConnections: 10,
+  waitingRequests: 0
+}
+*/
+```
+
+#### Practical Use Cases
+
+**1. Identify Performance Bottlenecks:**
+```javascript
+db.performanceMonitor.enable();
+
+// Run your application...
+await runApplicationLogic();
+
+// After some time, check stats
+const slowQueries = db.performanceMonitor.getSlowQueries(5);
+slowQueries.forEach(q => {
+  console.log(`Slow query (${q.duration}ms): ${q.query}`);
+});
+```
+
+**2. Monitor Production Performance:**
+```javascript
+// Enable in production with periodic reporting
+db.performanceMonitor.enable();
+
+setInterval(() => {
+  const stats = db.performanceMonitor.getStats();
+  console.log(`QPS: ${db.performanceMonitor.getQueriesPerSecond().toFixed(2)}`);
+  console.log(`Avg Query Time: ${stats.averageQueryTime}ms`);
+  
+  // Alert if queries are too slow
+  if (stats.averageQueryTime > 100) {
+    console.warn('ALERT: Average query time exceeds 100ms!');
+  }
+}, 60000); // Every minute
+```
+
+**3. Load Testing Analysis:**
+```javascript
+db.performanceMonitor.enable();
+db.performanceMonitor.reset();
+
+// Run load test...
+await runLoadTest();
+
+// Analyze results
+const stats = db.performanceMonitor.getStats();
+console.log(`Total Queries: ${stats.totalQueries}`);
+console.log(`Average Time: ${stats.averageQueryTime}ms`);
+console.log(`QPS: ${db.performanceMonitor.getQueriesPerSecond()}`);
+```
+
+---
+
 ## Advanced Usage
 
 ### Multiple Database Connections

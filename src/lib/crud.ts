@@ -1,4 +1,5 @@
 import connectionManager from './connectionManager';
+import performanceMonitor from './performanceMonitor';
 import { DbConfig, SelectOptions, UpdateOptions, DeleteOptions, WhereConditions } from '../types';
 
 export const utils = {
@@ -32,7 +33,11 @@ export const utils = {
         try {
             const pool = await connectionManager.getPool(dbConfig);
             const [results] = await pool.query(query, params);
-            this.logQueryPerformance(query, startTime, params);
+            const duration = this.logQueryPerformance(query, startTime, params);
+
+            // Record in performance monitor if enabled
+            performanceMonitor.recordQuery(query, duration, params);
+
             return results;
         } catch (error: any) {
             logger.error(`${operation} Error: ${error.message}`);
@@ -276,6 +281,171 @@ export const _delete = async function (query: string, table?: string, dbConfig?:
 };
 
 export { _delete as delete };
+
+// Bulk Operations
+export const bulkInsert = async function (
+    table: string,
+    records: Record<string, any>[],
+    options?: { batchSize?: number; ignore?: boolean },
+    dbConfig?: DbConfig
+): Promise<{ totalInserted: number; batches: number; firstInsertId?: number; lastInsertId?: number }> {
+    if (!table || !records || !Array.isArray(records) || records.length === 0) {
+        throw new Error('Table name and records are required for bulk insert');
+    }
+
+    const batchSize = options?.batchSize || 1000;
+    const isIgnore = options?.ignore || false;
+    const logger = connectionManager.getLogger();
+
+    // Validate all records have the same fields
+    const fields = Object.keys(records[0]);
+    for (const record of records) {
+        const recordFields = Object.keys(record);
+        if (recordFields.length !== fields.length || !recordFields.every(f => fields.includes(f))) {
+            throw new Error('All records must have the same fields for bulk insert');
+        }
+    }
+
+    let totalInserted = 0;
+    let firstInsertId: number | undefined;
+    let lastInsertId: number | undefined;
+    const batches = Math.ceil(records.length / batchSize);
+
+    for (let i = 0; i < records.length; i += batchSize) {
+        const batch = records.slice(i, i + batchSize);
+        const values: any[] = [];
+        const placeholders: string[] = [];
+
+        for (const record of batch) {
+            const recordValues = fields.map(field => record[field]);
+            values.push(...recordValues);
+            placeholders.push(`(${fields.map(() => '?').join(', ')})`);
+        }
+
+        const sql = isIgnore
+            ? `INSERT IGNORE INTO ${table} (${fields.join(', ')}) VALUES ${placeholders.join(', ')}`
+            : `INSERT INTO ${table} (${fields.join(', ')}) VALUES ${placeholders.join(', ')}`;
+
+        const result = await utils.executeQuery({ query: sql, params: values, dbConfig, operation: 'bulkInsert' });
+
+        totalInserted += result.affectedRows || 0;
+
+        if (i === 0 && result.insertId) {
+            firstInsertId = result.insertId;
+        }
+        if (result.insertId) {
+            lastInsertId = result.insertId + (result.affectedRows || 1) - 1;
+        }
+    }
+
+    logger.info(`Bulk inserted ${totalInserted} records into ${table} in ${batches} batches`);
+
+    return {
+        totalInserted,
+        batches,
+        firstInsertId,
+        lastInsertId
+    };
+};
+
+export const upsert = async function (
+    table: string,
+    data: Record<string, any>,
+    options: { conflictKey: string | string[]; updateFields?: string[] },
+    dbConfig?: DbConfig
+): Promise<{ action: 'inserted' | 'updated'; affectedRows: number; insertId?: number }> {
+    if (!table || !data || !options.conflictKey) {
+        throw new Error('Table, data, and conflictKey are required for upsert');
+    }
+
+    const fields = Object.keys(data);
+    const values = Object.values(data);
+    const placeholders = fields.map(() => '?').join(', ');
+
+    // Determine which fields to update on duplicate key
+    const conflictKeys = Array.isArray(options.conflictKey) ? options.conflictKey : [options.conflictKey];
+    const updateFields = options.updateFields || fields.filter(f => !conflictKeys.includes(f));
+
+    if (updateFields.length === 0) {
+        throw new Error('No fields to update on duplicate key');
+    }
+
+    // Build UPDATE clause
+    const updateClause = updateFields.map(field => `${field} = VALUES(${field})`).join(', ');
+
+    const sql = `INSERT INTO ${table} (${fields.join(', ')}) VALUES (${placeholders}) ON DUPLICATE KEY UPDATE ${updateClause}`;
+
+    const result = await utils.executeQuery({ query: sql, params: values, dbConfig, operation: 'upsert' });
+
+    // affectedRows = 1 means inserted, 2 means updated, 0 means no change
+    const action: 'inserted' | 'updated' = result.affectedRows === 1 ? 'inserted' : 'updated';
+
+    return {
+        action,
+        affectedRows: result.affectedRows,
+        insertId: result.insertId
+    };
+};
+
+export const bulkUpsert = async function (
+    table: string,
+    records: Record<string, any>[],
+    options: { conflictKey: string | string[]; updateFields?: string[]; batchSize?: number },
+    dbConfig?: DbConfig
+): Promise<{ totalAffected: number; batches: number }> {
+    if (!table || !records || records.length === 0) {
+        throw new Error('Table name and records are required for bulk upsert');
+    }
+
+    const batchSize = options?.batchSize || 1000;
+    const logger = connectionManager.getLogger();
+
+    // Validate all records have the same fields
+    const fields = Object.keys(records[0]);
+    for (const record of records) {
+        const recordFields = Object.keys(record);
+        if (recordFields.length !== fields.length || !recordFields.every(f => fields.includes(f))) {
+            throw new Error('All records must have the same fields for bulk upsert');
+        }
+    }
+
+    // Determine which fields to update on duplicate key
+    const conflictKeys = Array.isArray(options.conflictKey) ? options.conflictKey : [options.conflictKey];
+    const updateFields = options.updateFields || fields.filter(f => !conflictKeys.includes(f));
+
+    if (updateFields.length === 0) {
+        throw new Error('No fields to update on duplicate key');
+    }
+
+    const updateClause = updateFields.map(field => `${field} = VALUES(${field})`).join(', ');
+
+    let totalAffected = 0;
+    const batches = Math.ceil(records.length / batchSize);
+
+    for (let i = 0; i < records.length; i += batchSize) {
+        const batch = records.slice(i, i + batchSize);
+        const values: any[] = [];
+        const placeholders: string[] = [];
+
+        for (const record of batch) {
+            const recordValues = fields.map(field => record[field]);
+            values.push(...recordValues);
+            placeholders.push(`(${fields.map(() => '?').join(', ')})`);
+        }
+
+        const sql = `INSERT INTO ${table} (${fields.join(', ')}) VALUES ${placeholders.join(', ')} ON DUPLICATE KEY UPDATE ${updateClause}`;
+
+        const result = await utils.executeQuery({ query: sql, params: values, dbConfig, operation: 'bulkUpsert' });
+        totalAffected += result.affectedRows || 0;
+    }
+
+    logger.info(`Bulk upsert affected ${totalAffected} records in ${table} in ${batches} batches`);
+
+    return {
+        totalAffected,
+        batches
+    };
+};
 
 // Query Builder Methods
 export const buildAndExecuteSelectQuery = async function (options: SelectOptions, dbConfig?: DbConfig): Promise<any[]> {

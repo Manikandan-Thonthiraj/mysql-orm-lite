@@ -111,7 +111,41 @@ const connectionManager = {
     /**
      * Get logger instance
      */
-    getLogger: (): Logger => logger
+    getLogger: (): Logger => logger,
+
+    /**
+     * Get connection pool statistics
+     * @param dbConfig - Optional database configuration
+     * @returns Connection pool stats
+     */
+    getPoolStats: async (dbConfig?: DbConfig) => {
+        const conf = dbConfig || defaultConfig;
+        if (!conf || !conf.database) {
+            throw new Error('Database configuration missing');
+        }
+
+        const key = getPoolKey(conf);
+        const pool = pools.get(key);
+
+        if (!pool) {
+            return {
+                activeConnections: 0,
+                idleConnections: 0,
+                totalConnections: 0,
+                waitingRequests: 0
+            };
+        }
+
+        // Access pool internals (mysql2 specific)
+        const poolInfo = (pool as any).pool;
+
+        return {
+            activeConnections: poolInfo?._acquiringConnections?.length || 0,
+            idleConnections: poolInfo?._freeConnections?.length || 0,
+            totalConnections: poolInfo?._allConnections?.length || 0,
+            waitingRequests: poolInfo?._connectionQueue?.length || 0
+        };
+    }
 };
 
 export default connectionManager;
