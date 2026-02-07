@@ -355,6 +355,7 @@ Build and execute a SELECT query.
 | `having` | string | HAVING clause |
 | `limit` | number | LIMIT value |
 | `offset` | number | OFFSET value |
+| `forUpdate` | boolean | Append FOR UPDATE for row-level locking (default: false) |
 
 ```javascript
 // Simple select
@@ -683,6 +684,7 @@ The `TransactionCRUD` class provides all CRUD methods available in the main API:
 | Method | Description |
 |--------|-------------|
 | `find(query, params?)` | Execute SELECT query |
+| `findForUpdate(options)` | Execute locked SELECT (FOR UPDATE) |
 | `insert(table, data)` | Insert record |
 | `update(table, data, whereClause)` | Update records |
 | `delete(whereClause, table)` | Delete records |
@@ -704,6 +706,7 @@ The `TransactionCRUD` class provides all CRUD methods available in the main API:
 | `updateQuery(options)` | `buildAndExecuteUpdateQuery` |
 | `deleteWhere(options)` | `buildAndExecuteDeleteQuery` |
 | `remove(options)` | `buildAndExecuteDeleteQuery` |
+| `findForUpdate(options)` | `buildAndExecuteSelectQuery` (with forUpdate: true) |
 
 #### Complete Transaction Example
 
