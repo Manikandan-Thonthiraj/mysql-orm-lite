@@ -124,13 +124,23 @@ export const utils = {
 
         const walk = (cond: any): string => {
             if (!cond || typeof cond !== 'object') return '';
-            if (Array.isArray(cond)) return cond.map(walk).join(' AND ');
+            if (Array.isArray(cond)) return cond.map(walk).filter(Boolean).join(' AND ');
 
-            if ('$and' in cond) return `(${cond.$and.map(walk).join(' AND ')})`;
-            if ('$or' in cond) return `(${cond.$or.map(walk).join(' OR ')})`;
-            if ('$not' in cond) return `(NOT ${walk(cond.$not)})`;
+            const parts: string[] = [];
 
-            return Object.entries(cond).map(([k, v]) => buildCondition(k, v)).join(' AND ');
+            for (const [k, v] of Object.entries(cond)) {
+                if (k === '$and') {
+                    parts.push(`(${(v as any[]).map(walk).filter(Boolean).join(' AND ')})`);
+                } else if (k === '$or') {
+                    parts.push(`(${(v as any[]).map(walk).filter(Boolean).join(' OR ')})`);
+                } else if (k === '$not') {
+                    parts.push(`(NOT ${walk(v)})`);
+                } else {
+                    parts.push(buildCondition(k, v));
+                }
+            }
+
+            return parts.filter(Boolean).join(' AND ');
         };
 
         const clause = walk(conditions);
@@ -450,17 +460,26 @@ export const bulkUpsert = async function (
 // Query Builder Methods
 export const buildAndExecuteSelectQuery = async function (options: SelectOptions, dbConfig?: DbConfig): Promise<any[]> {
     const { query, params } = utils._buildSelectQuery(options);
+    if (options.debug) {
+        connectionManager.getLogger().info(`[DEBUG] Built Select Query: ${query}`, `Params: ${JSON.stringify(params)}`);
+    }
     return await utils.executeQuery({ query, params, dbConfig, operation: 'buildAndExecuteSelectQuery' });
 };
 
 export const buildAndExecuteUpdateQuery = async function (options: UpdateOptions, dbConfig?: DbConfig): Promise<number> {
     const { query, params } = utils._buildUpdateQuery(options);
+    if (options.debug) {
+        connectionManager.getLogger().info(`[DEBUG] Built Update Query: ${query}`, `Params: ${JSON.stringify(params)}`);
+    }
     const result = await utils.executeQuery({ query, params, dbConfig, operation: 'buildAndExecuteUpdateQuery' });
     return result.affectedRows;
 };
 
 export const buildAndExecuteDeleteQuery = async function (options: DeleteOptions, dbConfig?: DbConfig): Promise<number> {
     const { query, params } = utils._buildDeleteQuery(options);
+    if (options.debug) {
+        connectionManager.getLogger().info(`[DEBUG] Built Delete Query: ${query}`, `Params: ${JSON.stringify(params)}`);
+    }
     const result = await utils.executeQuery({ query, params, dbConfig, operation: 'buildAndExecuteDeleteQuery' });
     return result.affectedRows;
 };

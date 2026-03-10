@@ -37,17 +37,20 @@ export interface SelectOptions {
     having?: string;
     alias?: string;
     forUpdate?: boolean;
+    debug?: boolean;
 }
 
 export interface UpdateOptions {
     table: string;
     data: Record<string, any>;
     where?: WhereConditions;
+    debug?: boolean;
 }
 
 export interface DeleteOptions {
     table: string;
     where: WhereConditions;
+    debug?: boolean;
 }
 
 export interface ColumnInfo {

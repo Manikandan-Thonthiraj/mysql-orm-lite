@@ -148,6 +148,9 @@ class TransactionCRUD {
         const logger = connectionManager.getLogger();
         try {
             const { query, params } = crudUtils._buildSelectQuery(options);
+            if (options.debug || this.debug) {
+                logger.info(`[DEBUG] Built Select Query (Transaction): ${query}`, `Params: ${JSON.stringify(params)}`);
+            }
             return await this.executeQuery(query, params, 'TRANS_BUILD_SELECT');
         } catch (err) {
             logger.error('buildAndExecuteSelectQuery failed:', err);
@@ -159,6 +162,9 @@ class TransactionCRUD {
         const logger = connectionManager.getLogger();
         try {
             const { query, params } = crudUtils._buildUpdateQuery(options);
+            if (options.debug || this.debug) {
+                logger.info(`[DEBUG] Built Update Query (Transaction): ${query}`, `Params: ${JSON.stringify(params)}`);
+            }
             const result = await this.executeQuery(query, params, 'TRANS_BUILD_UPDATE');
             return result.affectedRows;
         } catch (err) {
@@ -171,6 +177,9 @@ class TransactionCRUD {
         const logger = connectionManager.getLogger();
         try {
             const { query, params } = crudUtils._buildDeleteQuery(options);
+            if (options.debug || this.debug) {
+                logger.info(`[DEBUG] Built Delete Query (Transaction): ${query}`, `Params: ${JSON.stringify(params)}`);
+            }
             const result = await this.executeQuery(query, params, 'TRANS_BUILD_DELETE');
             return result.affectedRows;
         } catch (err) {
